@@ -106,7 +106,7 @@ echo "========================================"
 # ── Health ────────────────────────────────────────────────────
 echo ""
 echo "[Health]"
-check "Health endpoint" "GET" "/health" "" "ok" "d.get('ok')"
+check "Health endpoint" "GET" "/health" "" "ok" "'ok' if d.get('ok') else 'fail'"
 
 # ── Phase 1 ───────────────────────────────────────────────────
 echo ""

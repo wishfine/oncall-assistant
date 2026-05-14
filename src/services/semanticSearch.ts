@@ -1,5 +1,5 @@
 import type { DocumentRecord, SearchResult } from "../types";
-import { listDocuments } from "./documentRepository";
+import { listDocuments, getRepositoryVersion } from "./documentRepository";
 import { keywordSearch } from "./keywordSearch";
 
 // ── Concept Dictionary ──────────────────────────────────────────
@@ -254,17 +254,18 @@ function makeSemanticSnippet(text: string, maxLen = 150): string {
 // ── TF-IDF Cache ────────────────────────────────────────────────
 
 let cachedVectors: Map<string, Map<string, number>> | null = null;
-let cachedDocCount = -1;
+let cachedVersion = -1;
 
 function getOrBuildVectors(
   docs: DocumentRecord[],
 ): Map<string, Map<string, number>> {
-  if (cachedVectors && docs.length === cachedDocCount) {
+  const version = getRepositoryVersion();
+  if (cachedVectors && version === cachedVersion) {
     return cachedVectors;
   }
   const { vectors } = buildTfidfVectors(docs);
   cachedVectors = vectors;
-  cachedDocCount = docs.length;
+  cachedVersion = version;
   return vectors;
 }
 

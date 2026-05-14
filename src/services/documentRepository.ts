@@ -6,13 +6,19 @@ import type { DocumentRecord } from "../types";
 const dataDir = path.resolve(__dirname, "..", "..", "data");
 
 let documents = new Map<string, DocumentRecord>();
+let repositoryVersion = 0;
 
 export function getDataDir(): string {
   return dataDir;
 }
 
+export function getRepositoryVersion(): number {
+  return repositoryVersion;
+}
+
 export function loadDocuments(): void {
   documents.clear();
+  repositoryVersion++;
   const files = fs
     .readdirSync(dataDir)
     .filter((f) => f.endsWith(".html"))
@@ -39,9 +45,11 @@ export function upsertDocument(id: string, html: string): DocumentRecord {
   const filename = `${id}.html`;
   const record = parseHtmlDocument(id, filename, html);
   documents.set(id, record);
+  repositoryVersion++;
   return record;
 }
 
 export function resetDocuments(): void {
   documents.clear();
+  repositoryVersion++;
 }
