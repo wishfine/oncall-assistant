@@ -3,7 +3,6 @@ import * as path from "path";
 import { getDataDir } from "./documentRepository";
 
 const FORBIDDEN_CHARS = /[\/\\\*\?]/;
-const ALLOWED_EXTENSIONS = [".html", ".md", ".txt"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 export function safeReadFile(fname: string): string {
@@ -20,12 +19,6 @@ export function safeReadFile(fname: string): string {
   // Reject forbidden characters
   if (FORBIDDEN_CHARS.test(fname)) {
     throw new Error("readFile: only basename allowed, no path separators or glob");
-  }
-
-  // Reject disallowed extensions
-  const ext = fname.slice(fname.lastIndexOf(".")).toLowerCase();
-  if (!ALLOWED_EXTENSIONS.includes(ext)) {
-    throw new Error(`readFile: extension not allowed: ${ext}`);
   }
 
   const dataDir = getDataDir();

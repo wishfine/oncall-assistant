@@ -1,5 +1,7 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { loadDocuments, resetDocuments } from "../src/services/documentRepository";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import * as fs from "fs";
+import * as path from "path";
+import { loadDocuments, resetDocuments, getDataDir } from "../src/services/documentRepository";
 import { appRequest } from "./helpers";
 
 describe("v1 search", () => {
@@ -90,4 +92,10 @@ describe("v1 search", () => {
     const { status } = await appRequest("POST", "/v1/documents", {});
     expect(status).toBe(400);
   });
+});
+
+// Clean up any test artifacts written to data/
+afterAll(() => {
+  const testFile = path.join(getDataDir(), "test-sop-upload.html");
+  try { fs.unlinkSync(testFile); } catch { /* ok */ }
 });

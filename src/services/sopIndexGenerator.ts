@@ -3,39 +3,77 @@ import * as path from "path";
 import { listDocuments, getDataDir } from "./documentRepository";
 import type { DocumentRecord } from "../types";
 
+// Common English tool/tech names that are poor search keywords
+const EN_STOPWORDS = new Set([
+  "api", "call", "on", "the", "and", "for", "use", "all", "get", "set",
+  "com", "org", "net", "http", "https", "html", "css", "js", "url",
+  "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8",
+]);
+
 /**
  * Extract keywords from a document's title and text.
- * Returns a deduplicated, sorted list of relevant CJK bigrams
- * and English words that appear in the content.
+ * Balances Chinese bigrams/trigrams with significant English domain terms.
  */
 function extractKeywords(doc: DocumentRecord): string[] {
-  const keywords = new Set<string>();
-  const combined = `${doc.title} ${doc.text.slice(0, 2000)}`.toLowerCase();
+  const combined = `${doc.title} ${doc.text.slice(0, 3000)}`.toLowerCase();
 
-  // English words (2+ chars)
-  const enRe = /[a-z][a-z0-9]+/g;
+  // Collect English words with stopword filtering
+  const enWords = new Set<string>();
+  const enRe = /[a-z]{2,}[a-z0-9]*/g;
   let m: RegExpExecArray | null;
   while ((m = enRe.exec(combined)) !== null) {
-    keywords.add(m[0]);
-  }
-
-  // CJK bigrams (most discriminative)
-  for (let i = 0; i < combined.length - 1; i++) {
-    const pair = combined.slice(i, i + 2);
-    if (/^[一-鿿]{2}$/.test(pair) && !/^[的了在是]/.test(pair) && !/[的了在是]$/.test(pair)) {
-      keywords.add(pair);
+    const word = m[0];
+    if (!EN_STOPWORDS.has(word) && word.length >= 2) {
+      enWords.add(word);
     }
   }
 
-  // Trigrams for domain-specific terms
+  // Collect CJK bigrams
+  const zhBigrams = new Set<string>();
+  for (let i = 0; i < combined.length - 1; i++) {
+    const pair = combined.slice(i, i + 2);
+    if (/^[一-鿿]{2}$/.test(pair) &&
+        !/^[的了在是]/.test(pair) &&
+        !/[的了在是]$/.test(pair)) {
+      zhBigrams.add(pair);
+    }
+  }
+
+  // Collect CJK trigrams
+  const zhTrigrams = new Set<string>();
   for (let i = 0; i < combined.length - 2; i++) {
     const triple = combined.slice(i, i + 3);
     if (/^[一-鿿]{3}$/.test(triple)) {
-      keywords.add(triple);
+      zhTrigrams.add(triple);
     }
   }
 
-  return Array.from(keywords).sort().slice(0, 20);
+  // Also extract bigrams/trigrams from title separately (higher priority)
+  const titleLower = doc.title.toLowerCase();
+  const titleZh: string[] = [];
+  for (let i = 0; i < titleLower.length - 1; i++) {
+    const pair = titleLower.slice(i, i + 2);
+    if (/^[一-鿿]{2}$/.test(pair)) titleZh.push(pair);
+  }
+  for (let i = 0; i < titleLower.length - 2; i++) {
+    const triple = titleLower.slice(i, i + 3);
+    if (/^[一-鿿]{3}$/.test(triple)) titleZh.push(triple);
+  }
+
+  // Title words as domain anchors (highest priority)
+  const domainAnchors = new Set<string>();
+  for (const anchor of titleZh) {
+    domainAnchors.add(anchor);
+  }
+
+  // Compose: Chinese first, then English, with title anchors leading
+  const result: string[] = [];
+  for (const a of domainAnchors) result.push(a);
+  for (const z of zhTrigrams) { if (!domainAnchors.has(z)) result.push(z); }
+  for (const z of zhBigrams) { if (!domainAnchors.has(z)) result.push(z); }
+  for (const e of enWords) result.push(e);
+
+  return result.slice(0, 30);
 }
 
 /**
