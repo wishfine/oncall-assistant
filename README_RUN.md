@@ -9,7 +9,7 @@
 - **框架**：Express
 - **HTML 解析**：Cheerio
 - **测试**：Vitest
-- **前端**：原生 HTML/CSS/JS
+- **前端**：原生 HTML / CSS / JS
 
 ## 快速开始
 
@@ -59,10 +59,10 @@ npm run smoke  # 终端 2
 ```bash
 curl -X POST http://localhost:3000/v1/documents \
   -H 'Content-Type: application/json' \
-  -d '{"id": "sop-custom", "html": "<html><head><title>Custom SOP</title></head><body><p>Content here</p></body></html>"}'
+  -d '{"id": "sop-custom", "html": "<html><head><title>Custom</title></head><body><p>Content</p></body></html>"}'
 ```
 
-响应：`201 { "id": "sop-custom", "title": "Custom SOP" }`
+响应：`201 { "id": "sop-custom", "title": "Custom" }`
 
 **GET /v1/search**
 
@@ -103,7 +103,7 @@ curl 'http://localhost:3000/v2/search?q=黑客攻击'
 curl 'http://localhost:3000/v2/search?q=机器学习模型出问题'
 ```
 
-语义搜索使用领域概念词典 + TF-IDF 余弦相似度实现，不依赖外部 API，完全离线可运行。查询词不需要精确出现在文档中即可找到相关 SOP。
+语义搜索使用领域概念词典 + TF-IDF 余弦相似度，不依赖外部 API，完全离线可运行。查询词不需要在文档中精确出现即可找到相关 SOP。
 
 ### Phase 3 — On-Call Agent (`/v3`)
 
@@ -148,7 +148,7 @@ curl -X POST http://localhost:3000/v3/chat \
     {
       "tool": "readFile",
       "args": { "fname": "sop-002.html" },
-      "observation": "提取到 3 个相关章节：常见故障处理、场景一：主从复制中断、升级流程（文件长度 5000 字符）"
+      "observation": "提取到 3 个相关章节：常见故障处理、场景一：主从复制中断、升级流程"
     }
   ],
   "sources": ["sop-002.html"]
@@ -157,50 +157,55 @@ curl -X POST http://localhost:3000/v3/chat \
 
 ## Agent 工具限制
 
-Agent 只能使用一个工具：`readFile(fname: string) -> string`，限制如下：
+Agent 只使用一个工具：`readFile(fname: string) -> string`。
 
-- **只能读取 `data/` 目录下的文件**
-- **参数只能是文件名**（basename），如 `sop-001.html`、`sop-index.md`
-- **禁止**绝对路径（如 `/etc/passwd`）
-- **禁止**路径穿越（如 `../README.md`）
-- **禁止**通配符/glob（如 `*.html`）
-- **禁止**读取目录
-- **禁止**列目录
+限制如下：
 
-Agent 执行流程：
-1. 读取 `sop-index.md` 定位相关 SOP
-2. 根据问题意图选择对应 SOP 文件
-3. 通过 `readFile` 读取 SOP 内容
-4. 解析 SOP 章节，匹配最相关段落
+- 只能读取 `data/` 目录下的文件
+- 参数只能是文件名（basename），如 `sop-001.html`、`sop-index.md`
+- 禁止绝对路径（如 `/etc/passwd`）
+- 禁止路径穿越（如 `../README.md`）
+- 禁止通配符/glob（如 `*.html`）
+- 禁止读取目录
+- 禁止列目录
+
+**Agent 执行流程：**
+
+1. 读取 `sop-index.md`，解析各 SOP 的关键词和典型问题
+2. 将用户问题与索引中的关键词进行匹配打分，选出最相关的 SOP 文件
+3. 通过 `readFile` 读取选中的 SOP 内容
+4. 解析 SOP 章节（h2 / h3），按相关性评分选出最匹配段落
 5. 使用模板生成结构化回答（处理步骤 + 升级条件 + 禁止操作 + 来源引用）
 
 ## 实现说明
 
 ### Phase 1：关键词搜索
 
-- 基于可见正文（排除 `<script>`、`<style>`、`<noscript>`、`<template>` 标签）
-- 大小写不敏感匹配
-- 中文字串匹配
-- 标题命中加权
-- 特殊处理 `q=&` 和 `q=%26` 查询 `&` 字符
-- `replication` 查询返回空（该词仅出现在 `<script>` 标签中）
+- 基于可见正文，排除 `<script>`、`<style>`、`<noscript>`、`<template>` 标签
+- 英文大小写不敏感，中文子串匹配
+- 标题命中加权 +2
+- `q=&` 和 `q=%26` 特殊处理为查询 `&` 字符
+- `replication` 查询返回空（该词仅出现在 `<script>` 中）
 
 ### Phase 2：语义搜索
 
-- 9 个领域的离线概念词典（后端/SRE、安全、AI、DBA、前端、数据平台、移动、QA、网络/CDN）
-- CJK unigram/bigram/trigram 分词 + TF-IDF 余弦相似度
-- Query 扩展：原始 token x2、扩展词 x1、领域锚点 x1.5
-- 标题精确命中 +0.1 bonus
+- 9 个领域离线概念词典（后端/SRE、安全、AI、DBA、前端、数据平台、移动、QA、网络/CDN）
+- CJK unigram + bigram + trigram 分词，TF-IDF 余弦相似度
+- Query 扩展权重：原始 token x2、扩展词 x1、领域锚点 x1.5
+- 标题精确命中 +0.1 bonus，最终分数上限 1.0
 - 无结果时回退 Phase 1 关键词搜索
 - 不依赖外部 API
 
 ### Phase 3：Agent
 
-- 11 种意图分类（database_replication、backend_oom、p0_escalation、security_intrusion 等）
-- 按意图选择 SOP 文件，P0 类问题读取 5 个 SOP
-- SOP 章节提取（h2/h3）+ 相关度评分
-- 模板化回答生成：处理步骤、升级条件、禁止操作、来源引用
-- `/v3` 页面展示完整工具调用链（工具名、参数、observation）
+- Agent 第一步读取 `sop-index.md`，从中解析每个 SOP 的关键词
+- 将用户问题与索引关键词做子串匹配，按命中数排序选出 SOP 文件
+- 固定意图规则作为补充加权，增强常见问题的准确性
+- P0 类问题至少读取 5 个 SOP
+- SOP 章节提取（匹配「值班职责/监控指标/常见故障处理/升级流程/禁止操作/工具参考」等 h2 标题）
+- 按章节标题和正文关键词评分，选出最相关段落
+- 模板化回答：处理步骤、升级条件、禁止操作、来源引用
+- `/v3` 页面展示完整工具调用链：工具名、参数（fname）、observation 摘要
 
 ## 目录结构
 
@@ -213,36 +218,40 @@ oncall-assistant/
 ├── README_RUN.md
 ├── plan.md
 ├── data/
-│   ├── sop-001.html … sop-010.html  # 10 份 SOP 文档
-│   └── sop-index.md                  # Agent 定位索引
+│   ├── sop-001.html … sop-010.html
+│   └── sop-index.md
 ├── src/
-│   ├── server.ts                     # 启动入口
-│   ├── app.ts                        # Express 配置
-│   ├── types.ts                      # 类型定义
+│   ├── server.ts
+│   ├── app.ts
+│   ├── types.ts
 │   ├── routes/
-│   │   ├── v1.ts                     # /v1 路由
-│   │   ├── v2.ts                     # /v2 路由
-│   │   └── v3.ts                     # /v3 路由
+│   │   ├── v1.ts
+│   │   ├── v2.ts
+│   │   └── v3.ts
 │   └── services/
-│       ├── htmlParser.ts             # HTML 解析
-│       ├── documentRepository.ts     # 文档库
-│       ├── keywordSearch.ts          # 关键词搜索
-│       ├── semanticSearch.ts         # 语义搜索
-│       ├── safeReadFile.ts           # 受限文件读取
-│       └── agent.ts                  # Agent 逻辑
+│       ├── htmlParser.ts
+│       ├── documentRepository.ts
+│       ├── keywordSearch.ts
+│       ├── semanticSearch.ts
+│       ├── safeReadFile.ts
+│       └── agent.ts
 ├── public/
 │   ├── styles.css
 │   ├── v1.js
 │   ├── v2.js
 │   └── v3.js
 ├── tests/
+│   ├── helpers.ts
 │   ├── health.test.ts
 │   ├── htmlParser.test.ts
 │   ├── v1.search.test.ts
 │   ├── v2.semantic.test.ts
 │   └── v3.agent.test.ts
 ├── scripts/
-│   └── smoke.sh                      # curl 验收脚本
-├── prompt/                           # AI 交互提示词截图
-└── screenshot/                       # 效果截图
+│   └── smoke.sh
+├── prompt/
+└── screenshot/
+    ├── v1-search-cdn.png
+    ├── v2-search-server-down.png
+    └── v3-agent-oom.png
 ```

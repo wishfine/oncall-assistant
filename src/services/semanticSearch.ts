@@ -302,6 +302,9 @@ export function semanticSearch(query: string): SearchResult[] {
       score += 0.1;
     }
 
+    // Cap at 1.0 for normalized semantic relevance
+    score = Math.min(1, score);
+
     if (score <= 0) continue;
 
     results.push({

@@ -111,65 +111,11 @@ const intentRules: IntentRule[] = [
   },
 ];
 
-function classifyIntent(question: string): { intent: Intent; sopFiles: string[] } {
-  const q = question.toLowerCase();
-  let best: { intent: Intent; sopFiles: string[]; score: number } = {
-    intent: "generic",
-    sopFiles: [],
-    score: 0,
-  };
-
-  for (const rule of intentRules) {
-    let score = 0;
-    for (const kw of rule.keywords) {
-      if (q.includes(kw.toLowerCase())) score++;
-    }
-    if (score > best.score) {
-      best = { intent: rule.intent, sopFiles: rule.sopFiles, score };
-    }
-  }
-
-  // Fallback: if no intent matched, extract CJK bigrams and search sop-index
-  if (best.score === 0 && best.sopFiles.length === 0) {
-    best.sopFiles = matchSopIndex(q);
-  }
-
-  return best;
-}
-
 /**
- * Extract CJK bigrams + English words from a string, then match against
- * sop-index.md sections to find relevant SOP files.
+ * Parse sop-index.md into a map of SOP filename → keywords from that section.
  */
-function matchSopIndex(question: string): string[] {
-  const qLower = question.toLowerCase();
-  const searchTerms = new Set<string>();
-
-  // Extract CJK bigrams
-  for (let i = 0; i < qLower.length - 1; i++) {
-    const pair = qLower.slice(i, i + 2);
-    if (/^[一-鿿]{2}$/.test(pair)) {
-      searchTerms.add(pair);
-    }
-  }
-
-  // Extract English/alphanumeric words
-  for (const w of qLower.split(/\s+/)) {
-    const cleaned = w.replace(/[^a-z0-9]/g, "");
-    if (cleaned.length > 0) searchTerms.add(cleaned);
-  }
-
-  if (searchTerms.size === 0) return [];
-
-  // Read sop-index and score each SOP section
-  let indexContent: string;
-  try {
-    indexContent = safeReadFile("sop-index.md").toLowerCase();
-  } catch {
-    return [];
-  }
-
-  const sopScores: { fname: string; score: number }[] = [];
+function parseIndexKeywords(indexContent: string): Map<string, string[]> {
+  const map = new Map<string, string[]>();
 
   for (let i = 1; i <= 10; i++) {
     const sopId = `sop-${String(i).padStart(3, "0")}`;
@@ -182,18 +128,122 @@ function matchSopIndex(question: string): string[] {
       nextSection > 0 ? nextSection : undefined,
     );
 
-    let score = 0;
-    for (const term of searchTerms) {
-      if (section.includes(term)) score++;
+    // Extract keywords from the index section
+    const kwMatch = section.match(/\*\*关键词\*\*[：:]\s*(.+)/);
+    const typicalMatch = section.match(/\*\*典型问题\*\*[：:]\s*(.+)/);
+
+    const keywords: string[] = [];
+    if (kwMatch) {
+      keywords.push(...kwMatch[1].split(/[,，、]/).map((k) => k.trim()));
+    }
+    if (typicalMatch) {
+      keywords.push(...typicalMatch[1].split(/[,，、]/).map((k) => k.trim()));
     }
 
+    map.set(`${sopId}.html`, keywords);
+  }
+
+  return map;
+}
+
+function classifyIntent(
+  question: string,
+  indexContent: string,
+): { intent: Intent; sopFiles: string[] } {
+  const q = question.toLowerCase();
+  const indexLower = indexContent.toLowerCase();
+
+  // ── Primary: score each SOP via its index keywords ──────────
+  const indexKeywords = parseIndexKeywords(indexContent);
+  const sopScores: { fname: string; score: number }[] = [];
+
+  for (const [fname, keywords] of indexKeywords) {
+    let score = 0;
+    for (const kw of keywords) {
+      if (q.includes(kw.toLowerCase())) score++;
+    }
     if (score > 0) {
-      sopScores.push({ fname: `${sopId}.html`, score });
+      sopScores.push({ fname, score });
+    }
+  }
+
+  // ── Supplement: search CJK bigrams in index text ────────────
+  const searchTerms = new Set<string>();
+  for (let i = 0; i < q.length - 1; i++) {
+    const pair = q.slice(i, i + 2);
+    if (/^[一-鿿]{2}$/.test(pair)) searchTerms.add(pair);
+  }
+  for (const w of q.split(/\s+/)) {
+    const cleaned = w.replace(/[^a-z0-9]/g, "");
+    if (cleaned.length > 0) searchTerms.add(cleaned);
+  }
+
+  for (const [fname, keywords] of indexKeywords) {
+    // Find the index section for this SOP
+    const sopId = fname.replace(/\.html$/, "");
+    const sectionStart = indexLower.indexOf(`## ${sopId}`);
+    if (sectionStart === -1) continue;
+    const nextSection = indexLower.indexOf("\n## sop-", sectionStart + 5);
+    const section = indexLower.slice(
+      sectionStart,
+      nextSection > 0 ? nextSection : undefined,
+    );
+
+    let bigramScore = 0;
+    for (const term of searchTerms) {
+      if (section.includes(term)) bigramScore++;
+    }
+
+    if (bigramScore > 0) {
+      const existing = sopScores.find((s) => s.fname === fname);
+      if (existing) {
+        existing.score += bigramScore;
+      } else {
+        sopScores.push({ fname, score: bigramScore });
+      }
+    }
+  }
+
+  // ── Bonus: intent-rule weighting ────────────────────────────
+  let bestRule: { intent: Intent; score: number } = {
+    intent: "generic",
+    score: 0,
+  };
+
+  for (const rule of intentRules) {
+    let ruleScore = 0;
+    for (const kw of rule.keywords) {
+      if (q.includes(kw.toLowerCase())) ruleScore++;
+    }
+    if (ruleScore > bestRule.score) {
+      bestRule = { intent: rule.intent, score: ruleScore };
+    }
+
+    // Add bonus to index-based SOP scores
+    if (ruleScore > 0) {
+      for (const fname of rule.sopFiles) {
+        const existing = sopScores.find((s) => s.fname === fname);
+        if (existing) {
+          existing.score += ruleScore;
+        } else {
+          sopScores.push({ fname, score: ruleScore });
+        }
+      }
     }
   }
 
   sopScores.sort((a, b) => b.score - a.score);
-  return sopScores.slice(0, 5).map((s) => s.fname);
+
+  // Select top SOPs (P0 uses more)
+  const maxFiles = bestRule.intent === "p0_escalation" ? 5 : 3;
+  const sopFiles = sopScores.slice(0, maxFiles).map((s) => s.fname);
+
+  // Fallback: if nothing matched, return at least sop-001
+  if (sopFiles.length === 0) {
+    return { intent: "generic", sopFiles: ["sop-001.html"] };
+  }
+
+  return { intent: bestRule.intent, sopFiles };
 }
 
 // ── Section extraction ───────────────────────────────────────────
@@ -437,8 +487,8 @@ export async function runAgent(question: string): Promise<AgentResponse> {
     };
   }
 
-  // Step 2: Classify intent and select SOP files
-  const { intent, sopFiles } = classifyIntent(question);
+  // Step 2: Classify intent and select SOP files via sop-index.md
+  const { intent, sopFiles } = classifyIntent(question, indexContent);
 
   // Step 3: Read selected SOP files
   const allSections: { sopId: string; section: SopSection }[] = [];
