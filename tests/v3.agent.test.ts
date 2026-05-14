@@ -1,0 +1,164 @@
+import { describe, it, expect, beforeAll } from "vitest";
+import app from "../src/app";
+import { loadDocuments, resetDocuments } from "../src/services/documentRepository";
+import { safeReadFile } from "../src/services/safeReadFile";
+import { runAgent } from "../src/services/agent";
+import type { Request, Response } from "express";
+import type { AgentResponse } from "../src/types";
+
+function appRequest(
+  method: string,
+  url: string,
+  body?: unknown,
+): Promise<{ status: number; body: unknown }> {
+  return new Promise((resolve) => {
+    const req = {
+      method,
+      url,
+      headers: { "content-type": body ? "application/json" : undefined },
+      body,
+      originalUrl: url,
+      query: parseQuery(url),
+    } as unknown as Request;
+
+    const res = {
+      statusCode: 200,
+      json(data: unknown) {
+        resolve({ status: this.statusCode, body: data });
+        return this;
+      },
+      send(data: string) {
+        resolve({ status: this.statusCode, body: data });
+        return this;
+      },
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      setHeader() {
+        return this;
+      },
+    } as unknown as Response;
+
+    app(req, res);
+  });
+}
+
+function parseQuery(url: string): Record<string, string> {
+  const q: Record<string, string> = {};
+  const idx = url.indexOf("?");
+  if (idx === -1) return q;
+  const search = url.slice(idx + 1);
+  for (const part of search.split("&")) {
+    const [k, v] = part.split("=");
+    q[decodeURIComponent(k)] = v !== undefined ? decodeURIComponent(v || "") : "";
+  }
+  return q;
+}
+
+describe("safeReadFile", () => {
+  it("reads a valid SOP file", () => {
+    const content = safeReadFile("sop-001.html");
+    expect(content).toContain("<!DOCTYPE html>");
+  });
+
+  it("rejects empty fname", () => {
+    expect(() => safeReadFile("")).toThrow();
+    expect(() => safeReadFile("   ")).toThrow();
+  });
+
+  it("rejects path traversal", () => {
+    expect(() => safeReadFile("../README.md")).toThrow();
+    expect(() => safeReadFile("../../etc/passwd")).toThrow();
+  });
+
+  it("rejects absolute paths", () => {
+    expect(() => safeReadFile("/etc/passwd")).toThrow();
+  });
+
+  it("rejects glob patterns", () => {
+    expect(() => safeReadFile("*.html")).toThrow();
+  });
+
+  it("rejects directory access", () => {
+    expect(() => safeReadFile(".")).toThrow();
+  });
+
+  it("rejects file not found", () => {
+    expect(() => safeReadFile("nonexistent.html")).toThrow();
+  });
+});
+
+describe("agent", () => {
+  beforeAll(() => {
+    resetDocuments();
+    loadDocuments();
+  });
+
+  it("数据库主从延迟 reads sop-index and sop-002", async () => {
+    const result = await runAgent("数据库主从延迟超过30秒怎么处理？");
+    expect(result.sources).toContain("sop-002.html");
+
+    const readIndex = result.toolCalls.find(
+      (tc) => tc.args.fname === "sop-index.md",
+    );
+    expect(readIndex).toBeDefined();
+  });
+
+  it("服务OOM reads sop-001", async () => {
+    const result = await runAgent("服务 OOM 了怎么办？");
+    expect(result.sources).toContain("sop-001.html");
+  });
+
+  it("P0故障 reads multiple SOPs", async () => {
+    const result = await runAgent("P0 故障的响应流程是什么？");
+    expect(result.sources.length).toBeGreaterThanOrEqual(2);
+    // Should at least include backend, SRE, or DBA
+    const hasP0Sop = result.sources.some((s) =>
+      ["sop-001.html", "sop-002.html", "sop-004.html", "sop-005.html"].includes(s),
+    );
+    expect(hasP0Sop).toBe(true);
+  });
+
+  it("入侵 detection reads sop-005", async () => {
+    const result = await runAgent("怀疑有人入侵了系统");
+    expect(result.sources).toContain("sop-005.html");
+  });
+
+  it("推荐质量下降 reads sop-008", async () => {
+    const result = await runAgent("推荐结果质量下降了");
+    expect(result.sources).toContain("sop-008.html");
+  });
+
+  it("toolCalls always start with readFile(sop-index.md)", async () => {
+    const result = await runAgent("OOM");
+    expect(result.toolCalls.length).toBeGreaterThan(0);
+    expect(result.toolCalls[0].tool).toBe("readFile");
+    expect(result.toolCalls[0].args.fname).toBe("sop-index.md");
+  });
+
+  it("answer is a non-empty string", async () => {
+    const result = await runAgent("OOM");
+    expect(result.answer).toBeTruthy();
+    expect(typeof result.answer).toBe("string");
+    expect(result.answer.length).toBeGreaterThan(20);
+  });
+});
+
+describe("v3 API", () => {
+  it("POST /v3/chat requires message", async () => {
+    const { status } = await appRequest("POST", "/v3/chat", {});
+    expect(status).toBe(400);
+  });
+
+  it("POST /v3/chat returns AgentResponse structure", async () => {
+    const { status, body } = await appRequest("POST", "/v3/chat", {
+      message: "OOM",
+    });
+    expect(status).toBe(200);
+    const data = body as AgentResponse;
+    expect(typeof data.answer).toBe("string");
+    expect(Array.isArray(data.toolCalls)).toBe(true);
+    expect(Array.isArray(data.sources)).toBe(true);
+  });
+});
