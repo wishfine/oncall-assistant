@@ -4,41 +4,62 @@
   const statusEl = document.getElementById("status");
   const historyEl = document.getElementById("chat-history");
 
-  function renderToolCalls(calls) {
-    if (!calls || !calls.length) return "";
-    return calls
-      .map(
-        (tc) => `
-      <div class="tool-call">
-        <div class="tool-name">🔧 ${esc(tc.tool)}</div>
-        <div class="tool-args">参数：${esc(JSON.stringify(tc.args))}</div>
-        <div class="tool-obs">结果：${esc(tc.observation)}</div>
-      </div>`,
-      )
-      .join("");
-  }
-
   function esc(s) {
+    if (s === null || s === undefined) return "";
     const el = document.createElement("span");
     el.textContent = String(s);
     return el.innerHTML;
+  }
+
+  function renderToolCalls(calls) {
+    if (!calls || !calls.length) return "";
+
+    const steps = calls
+      .map(
+        (tc, i) => `
+      <div class="tool-call">
+        <div class="tool-step">
+          <span class="tool-step-num">${i + 1}</span>
+          <span class="tool-name">readFile</span>
+        </div>
+        <div class="tool-args">fname: ${esc(tc.args.fname)}</div>
+        <div class="tool-obs">${esc(tc.observation)}</div>
+      </div>`,
+      )
+      .join("");
+
+    return `
+      <div class="tool-calls-section">
+        <div class="tool-calls-header" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden">
+          🔧 工具调用过程 (${calls.length} 步)
+        </div>
+        <div class="tool-calls-body">${steps}</div>
+      </div>`;
+  }
+
+  function renderSources(sources) {
+    if (!sources || !sources.length) return "";
+    return `
+      <div class="sources">
+        📄 来源：
+        ${sources.map((s) => `<span class="source-tag">${esc(s)}</span>`).join(" ")}
+      </div>`;
   }
 
   function addMessage(role, content, toolCalls, sources) {
     const div = document.createElement("div");
     div.className = "chat-msg " + role;
 
-    let html = `<div class="result-title">${role === "user" ? "🧑 你" : "🤖 Agent"}</div>`;
+    const roleLabel = role === "user" ? "🧑 你" : "🤖 Agent";
+
+    let html = `<div class="msg-role">${roleLabel}</div>`;
 
     if (toolCalls && toolCalls.length) {
       html += renderToolCalls(toolCalls);
     }
 
-    html += `<div class="result-snippet">${esc(content) || ""}</div>`;
-
-    if (sources && sources.length) {
-      html += `<div class="sources">📄 来源：${esc(sources.join(", "))}</div>`;
-    }
+    html += `<div class="msg-content">${esc(content)}</div>`;
+    html += renderSources(sources);
 
     div.innerHTML = html;
     historyEl.appendChild(div);
@@ -51,7 +72,9 @@
 
     addMessage("user", message, null, null);
     q.value = "";
-    statusEl.innerHTML = '<span class="loading">Agent 思考中…</span>';
+    q.disabled = true;
+    btn.disabled = true;
+    statusEl.innerHTML = '<div class="loading">Agent 思考中…</div>';
 
     try {
       const resp = await fetch("/v3/chat", {
@@ -64,7 +87,11 @@
       addMessage("agent", data.answer, data.toolCalls, data.sources);
     } catch (e) {
       statusEl.innerHTML =
-        '<span class="error-msg">请求失败，请检查服务状态</span>';
+        '<div class="error-msg">请求失败，请检查服务状态</div>';
+    } finally {
+      q.disabled = false;
+      btn.disabled = false;
+      q.focus();
     }
   }
 
