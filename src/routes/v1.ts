@@ -1,5 +1,7 @@
+import * as fs from "fs";
+import * as path from "path";
 import { Router, Request, Response } from "express";
-import { upsertDocument } from "../services/documentRepository";
+import { upsertDocument, getDataDir } from "../services/documentRepository";
 import { keywordSearch } from "../services/keywordSearch";
 
 const router = Router();
@@ -47,6 +49,15 @@ router.post("/documents", (req: Request, res: Response) => {
     return;
   }
   const doc = upsertDocument(id, html);
+
+  // Persist to data/ so Agent can readFile the uploaded document
+  try {
+    const filepath = path.join(getDataDir(), `${id}.html`);
+    fs.writeFileSync(filepath, html, "utf-8");
+  } catch {
+    // Non-fatal: Agent won't be able to readFile, but memory search still works
+  }
+
   res.status(201).json({ id: doc.id, title: doc.title });
 });
 

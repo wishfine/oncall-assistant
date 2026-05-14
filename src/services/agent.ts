@@ -126,22 +126,25 @@ const intentRules: IntentRule[] = [
 
 /**
  * Parse sop-index.md into a map of SOP filename → keywords from that section.
+ * Supports any number of SOP entries via regex scan.
  */
 function parseIndexKeywords(indexContent: string): Map<string, string[]> {
   const map = new Map<string, string[]>();
 
-  for (let i = 1; i <= 10; i++) {
-    const sopId = `sop-${String(i).padStart(3, "0")}`;
-    const sectionStart = indexContent.indexOf(`## ${sopId}`);
-    if (sectionStart === -1) continue;
+  // Match all ## sop-NNN or ## sop-NNN.html headings
+  const headingRe = /^##\s+(sop-\d+)(?:\.html)?/gm;
+  const matches = Array.from(indexContent.matchAll(headingRe));
 
-    const nextSection = indexContent.indexOf("\n## sop-", sectionStart + 5);
-    const section = indexContent.slice(
-      sectionStart,
-      nextSection > 0 ? nextSection : undefined,
-    );
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
+    const fname = `${m[1]}.html`;
+    const start = m.index ?? 0;
+    const end =
+      i + 1 < matches.length
+        ? (matches[i + 1].index ?? indexContent.length)
+        : indexContent.length;
+    const section = indexContent.slice(start, end);
 
-    // Extract keywords from the index section
     const kwMatch = section.match(/\*\*关键词\*\*[：:]\s*(.+)/);
     const typicalMatch = section.match(/\*\*典型问题\*\*[：:]\s*(.+)/);
 
@@ -153,7 +156,7 @@ function parseIndexKeywords(indexContent: string): Map<string, string[]> {
       keywords.push(...typicalMatch[1].split(/[,，、]/).map((k) => k.trim()));
     }
 
-    map.set(`${sopId}.html`, keywords);
+    map.set(fname, keywords);
   }
 
   return map;
@@ -180,7 +183,7 @@ function classifyIntent(
     }
   }
 
-  // ── Supplement: search CJK bigrams in index text ────────────
+  // ── Supplement: search CJK bigrams in index sections ────────
   const searchTerms = new Set<string>();
   for (let i = 0; i < q.length - 1; i++) {
     const pair = q.slice(i, i + 2);
@@ -191,16 +194,19 @@ function classifyIntent(
     if (cleaned.length > 0) searchTerms.add(cleaned);
   }
 
-  for (const [fname, keywords] of indexKeywords) {
-    // Find the index section for this SOP
-    const sopId = fname.replace(/\.html$/, "");
-    const sectionStart = indexLower.indexOf(`## ${sopId}`);
-    if (sectionStart === -1) continue;
-    const nextSection = indexLower.indexOf("\n## sop-", sectionStart + 5);
-    const section = indexLower.slice(
-      sectionStart,
-      nextSection > 0 ? nextSection : undefined,
-    );
+  // Extract all SOP sections from the index using the same heading regex
+  const headingRe = /^##\s+(sop-\d+)(?:\.html)?/gm;
+  const sectionMatches = Array.from(indexLower.matchAll(headingRe));
+
+  for (let i = 0; i < sectionMatches.length; i++) {
+    const m = sectionMatches[i];
+    const fname = `${m[1]}.html`;
+    const start = m.index ?? 0;
+    const end =
+      i + 1 < sectionMatches.length
+        ? (sectionMatches[i + 1].index ?? indexLower.length)
+        : indexLower.length;
+    const section = indexLower.slice(start, end);
 
     let bigramScore = 0;
     for (const term of searchTerms) {

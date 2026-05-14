@@ -22,7 +22,7 @@ function extractKeywords(doc: DocumentRecord): string[] {
   // CJK bigrams (most discriminative)
   for (let i = 0; i < combined.length - 1; i++) {
     const pair = combined.slice(i, i + 2);
-    if (/^[一-鿿]{2}$/.test(pair) && !/^[的了在是]/ .test(pair) && !/[的了在是]$/.test(pair)) {
+    if (/^[一-鿿]{2}$/.test(pair) && !/^[的了在是]/.test(pair) && !/[的了在是]$/.test(pair)) {
       keywords.add(pair);
     }
   }
@@ -35,7 +35,7 @@ function extractKeywords(doc: DocumentRecord): string[] {
     }
   }
 
-  return Array.from(keywords).slice(0, 20);
+  return Array.from(keywords).sort().slice(0, 20);
 }
 
 /**

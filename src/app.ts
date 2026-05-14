@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import { loadDocuments } from "./services/documentRepository";
+import { ensureSopIndex } from "./services/sopIndexGenerator";
 import v1Router from "./routes/v1";
 import v2Router from "./routes/v2";
 import v3Router from "./routes/v3";
@@ -9,6 +10,9 @@ const app = express();
 
 // Load SOP documents into memory on startup
 loadDocuments();
+
+// Auto-generate sop-index.md for Agent
+ensureSopIndex();
 
 app.use(express.json({ limit: "5mb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
