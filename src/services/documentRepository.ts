@@ -12,6 +12,7 @@ export function getDataDir(): string {
 }
 
 export function loadDocuments(): void {
+  documents.clear();
   const files = fs
     .readdirSync(dataDir)
     .filter((f) => f.endsWith(".html"))

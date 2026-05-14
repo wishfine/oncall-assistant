@@ -6,7 +6,7 @@ export function parseHtmlDocument(
   filename: string,
   html: string,
 ): DocumentRecord {
-  const $ = cheerio.load(html, { decodeEntities: true }, false);
+  const $ = cheerio.load(html);
 
   // Remove non-content elements before extracting text
   $("script, style, noscript, template").remove();
