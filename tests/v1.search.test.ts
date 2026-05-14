@@ -1,64 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import app from "../src/app";
 import { loadDocuments, resetDocuments } from "../src/services/documentRepository";
-import type { Request, Response } from "express";
-
-/**
- * Call the Express app handler directly (no listen() to avoid sandbox issues)
- */
-function appRequest(
-  method: string,
-  url: string,
-  body?: unknown,
-): Promise<{ status: number; body: unknown; headers: Record<string, string> }> {
-  return new Promise((resolve) => {
-    const headers: Record<string, string> = {};
-    const req = {
-      method,
-      url,
-      headers: { "content-type": body ? "application/json" : undefined },
-      body,
-      originalUrl: url,
-      query: parseQuery(url),
-    } as unknown as Request;
-
-    const res = {
-      statusCode: 200,
-      _headers: {} as Record<string, string>,
-      json(data: unknown) {
-        resolve({ status: this.statusCode, body: data, headers });
-        return this;
-      },
-      send(data: string) {
-        resolve({ status: this.statusCode, body: data, headers });
-        return this;
-      },
-      status(code: number) {
-        this.statusCode = code;
-        return this;
-      },
-      setHeader(name: string, value: string) {
-        headers[name] = value;
-        return this;
-      },
-    } as unknown as Response;
-
-    app(req, res);
-  });
-}
-
-function parseQuery(url: string): Record<string, string> {
-  const q: Record<string, string> = {};
-  const idx = url.indexOf("?");
-  if (idx === -1) return q;
-  const search = url.slice(idx + 1);
-  for (const part of search.split("&")) {
-    const [k, v] = part.split("=");
-    // decode %26 -> &, but keep empty string for q=&
-    q[decodeURIComponent(k)] = v !== undefined ? decodeURIComponent(v || "") : "";
-  }
-  return q;
-}
+import { appRequest } from "./helpers";
 
 describe("v1 search", () => {
   beforeAll(() => {

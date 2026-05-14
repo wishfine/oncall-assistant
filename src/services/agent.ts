@@ -129,7 +129,71 @@ function classifyIntent(question: string): { intent: Intent; sopFiles: string[] 
     }
   }
 
+  // Fallback: if no intent matched, extract CJK bigrams and search sop-index
+  if (best.score === 0 && best.sopFiles.length === 0) {
+    best.sopFiles = matchSopIndex(q);
+  }
+
   return best;
+}
+
+/**
+ * Extract CJK bigrams + English words from a string, then match against
+ * sop-index.md sections to find relevant SOP files.
+ */
+function matchSopIndex(question: string): string[] {
+  const qLower = question.toLowerCase();
+  const searchTerms = new Set<string>();
+
+  // Extract CJK bigrams
+  for (let i = 0; i < qLower.length - 1; i++) {
+    const pair = qLower.slice(i, i + 2);
+    if (/^[一-鿿]{2}$/.test(pair)) {
+      searchTerms.add(pair);
+    }
+  }
+
+  // Extract English/alphanumeric words
+  for (const w of qLower.split(/\s+/)) {
+    const cleaned = w.replace(/[^a-z0-9]/g, "");
+    if (cleaned.length > 0) searchTerms.add(cleaned);
+  }
+
+  if (searchTerms.size === 0) return [];
+
+  // Read sop-index and score each SOP section
+  let indexContent: string;
+  try {
+    indexContent = safeReadFile("sop-index.md").toLowerCase();
+  } catch {
+    return [];
+  }
+
+  const sopScores: { fname: string; score: number }[] = [];
+
+  for (let i = 1; i <= 10; i++) {
+    const sopId = `sop-${String(i).padStart(3, "0")}`;
+    const sectionStart = indexContent.indexOf(`## ${sopId}`);
+    if (sectionStart === -1) continue;
+
+    const nextSection = indexContent.indexOf("\n## sop-", sectionStart + 5);
+    const section = indexContent.slice(
+      sectionStart,
+      nextSection > 0 ? nextSection : undefined,
+    );
+
+    let score = 0;
+    for (const term of searchTerms) {
+      if (section.includes(term)) score++;
+    }
+
+    if (score > 0) {
+      sopScores.push({ fname: `${sopId}.html`, score });
+    }
+  }
+
+  sopScores.sort((a, b) => b.score - a.score);
+  return sopScores.slice(0, 5).map((s) => s.fname);
 }
 
 // ── Section extraction ───────────────────────────────────────────

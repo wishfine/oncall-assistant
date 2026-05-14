@@ -251,6 +251,23 @@ function makeSemanticSnippet(text: string, maxLen = 150): string {
   return normalized.slice(0, maxLen) + "…";
 }
 
+// ── TF-IDF Cache ────────────────────────────────────────────────
+
+let cachedVectors: Map<string, Map<string, number>> | null = null;
+let cachedDocCount = -1;
+
+function getOrBuildVectors(
+  docs: DocumentRecord[],
+): Map<string, Map<string, number>> {
+  if (cachedVectors && docs.length === cachedDocCount) {
+    return cachedVectors;
+  }
+  const { vectors } = buildTfidfVectors(docs);
+  cachedVectors = vectors;
+  cachedDocCount = docs.length;
+  return vectors;
+}
+
 // ── Main Search ─────────────────────────────────────────────────
 
 export function semanticSearch(query: string): SearchResult[] {
@@ -268,8 +285,8 @@ export function semanticSearch(query: string): SearchResult[] {
     queryVec.set(token, (queryVec.get(token) || 0) + weight);
   }
 
-  // Build TF-IDF vectors for all documents
-  const { vectors } = buildTfidfVectors(docs);
+  // Get or build TF-IDF vectors (cached when doc count unchanged)
+  const vectors = getOrBuildVectors(docs);
 
   // Compute cosine similarity for each document
   const results: SearchResult[] = [];
