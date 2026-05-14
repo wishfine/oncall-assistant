@@ -24,7 +24,7 @@ export function safeReadFile(fname: string): string {
   const resolved = path.resolve(dataDir, fname);
 
   // Must still be within dataDir
-  if (!resolved.startsWith(dataDir + path.sep) && resolved !== dataDir) {
+  if (!resolved.startsWith(dataDir + path.sep)) {
     throw new Error("readFile: access outside data/ not allowed");
   }
 

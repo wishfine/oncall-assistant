@@ -95,39 +95,74 @@ describe("agent", () => {
     loadDocuments();
   });
 
-  it("数据库主从延迟 reads sop-index and sop-002", async () => {
+  it("数据库主从延迟 reads sop-index and sop-002 with useful answer", async () => {
     const result = await runAgent("数据库主从延迟超过30秒怎么处理？");
     expect(result.sources).toContain("sop-002.html");
+    expect(result.toolCalls.find((tc) => tc.args.fname === "sop-index.md")).toBeDefined();
 
-    const readIndex = result.toolCalls.find(
-      (tc) => tc.args.fname === "sop-index.md",
-    );
-    expect(readIndex).toBeDefined();
+    // Answer must contain actual advice, not the "not found" fallback
+    expect(result.answer).not.toMatch(/未找到/);
+    expect(result.answer.length).toBeGreaterThan(100);
+    // Should mention database-related terms
+    const answer = result.answer.toLowerCase();
+    const hasDbTerms =
+      answer.includes("复制") ||
+      answer.includes("延迟") ||
+      answer.includes("主从") ||
+      answer.includes("binlog") ||
+      answer.includes("数据库");
+    expect(hasDbTerms).toBe(true);
   });
 
-  it("服务OOM reads sop-001", async () => {
+  it("服务OOM reads sop-001 with useful answer", async () => {
     const result = await runAgent("服务 OOM 了怎么办？");
     expect(result.sources).toContain("sop-001.html");
+    expect(result.answer).not.toMatch(/未找到/);
+    expect(result.answer.length).toBeGreaterThan(100);
   });
 
-  it("P0故障 reads multiple SOPs", async () => {
+  it("P0故障 reads multiple SOPs with upgrade info", async () => {
     const result = await runAgent("P0 故障的响应流程是什么？");
     expect(result.sources.length).toBeGreaterThanOrEqual(2);
-    // Should at least include backend, SRE, or DBA
     const hasP0Sop = result.sources.some((s) =>
       ["sop-001.html", "sop-002.html", "sop-004.html", "sop-005.html"].includes(s),
     );
     expect(hasP0Sop).toBe(true);
+    // Should mention upgrade/escalation
+    expect(result.answer.length).toBeGreaterThan(100);
+    const answer = result.answer;
+    expect(answer.includes("升级") || answer.includes("P0") || answer.includes("响应")).toBe(true);
   });
 
-  it("入侵 detection reads sop-005", async () => {
+  it("入侵 detection reads sop-005 with security advice", async () => {
     const result = await runAgent("怀疑有人入侵了系统");
     expect(result.sources).toContain("sop-005.html");
+    expect(result.answer).not.toMatch(/未找到/);
+    expect(result.answer.length).toBeGreaterThan(100);
+    const answer = result.answer.toLowerCase();
+    const hasSecTerms =
+      answer.includes("安全") ||
+      answer.includes("入侵") ||
+      answer.includes("隔离") ||
+      answer.includes("ddos") ||
+      answer.includes("waf") ||
+      answer.includes("siem");
+    expect(hasSecTerms).toBe(true);
   });
 
-  it("推荐质量下降 reads sop-008", async () => {
+  it("推荐质量下降 reads sop-008 with model advice", async () => {
     const result = await runAgent("推荐结果质量下降了");
     expect(result.sources).toContain("sop-008.html");
+    expect(result.answer).not.toMatch(/未找到/);
+    expect(result.answer.length).toBeGreaterThan(100);
+    const answer = result.answer.toLowerCase();
+    const hasModelTerms =
+      answer.includes("模型") ||
+      answer.includes("推荐") ||
+      answer.includes("特征") ||
+      answer.includes("ab实验") ||
+      answer.includes("效果");
+    expect(hasModelTerms).toBe(true);
   });
 
   it("toolCalls always start with readFile(sop-index.md)", async () => {

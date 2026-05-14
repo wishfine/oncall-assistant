@@ -18,6 +18,7 @@ type Intent =
 interface IntentRule {
   intent: Intent;
   keywords: string[];
+  scoringKeywords: string[]; // used for section scoring after SOP is read
   sopFiles: string[];
 }
 
@@ -25,59 +26,93 @@ const intentRules: IntentRule[] = [
   {
     intent: "database_replication",
     keywords: ["数据库", "主从", "复制", "延迟", "慢查询", "连接数", "Redis", "MySQL", "SQL", "DBA"],
+    scoringKeywords: [
+      "主从", "复制", "延迟", "Binlog", "慢查询", "只读", "连接", "磁盘", "Redis",
+      "内存", "DBA", "数据库", "备份", "恢复", "事务", "锁", "SHOW",
+    ],
     sopFiles: ["sop-002.html"],
   },
   {
     intent: "backend_oom",
     keywords: ["OOM", "oom", "服务", "后端", "超时", "连接池", "CPU", "内存", "崩溃", "挂了", "挂掉", "宕机", "JVM", "堆"],
+    scoringKeywords: [
+      "OOM", "服务", "超时", "CPU", "内存", "JVM", "堆", "连接池", "队列",
+      "崩溃", "扩容", "回滚", "配置", "线程", "死锁", "Pod", "进程",
+    ],
     sopFiles: ["sop-001.html"],
   },
   {
     intent: "p0_escalation",
     keywords: ["P0", "p0", "故障", "升级", "响应流程", "紧急", "恢复"],
+    scoringKeywords: [
+      "P0", "升级", "故障", "紧急", "响应", "恢复", "值班", "通知", "团队",
+      "五分钟", "三分钟", "总监", "VP",
+    ],
     sopFiles: ["sop-001.html", "sop-002.html", "sop-004.html", "sop-005.html", "sop-010.html"],
   },
   {
     intent: "security_intrusion",
     keywords: ["黑客", "攻击", "入侵", "安全", "DDoS", "漏洞", "恶意", "病毒", "木马", "泄露", "注入"],
+    scoringKeywords: [
+      "安全", "入侵", "DDoS", "攻击", "漏洞", "恶意", "SIEM", "WAF", "隔离",
+      "取证", "日志", "升级", "响应", "防火墙", "SQL", "注入", "事件",
+    ],
     sopFiles: ["sop-005.html"],
   },
   {
     intent: "recommendation_quality",
     keywords: ["推荐", "模型", "算法", "AI", "机器学习", "推理", "GPU", "特征", "AB实验", "效果"],
+    scoringKeywords: [
+      "模型", "推荐", "推理", "GPU", "特征", "AB实验", "效果", "下降", "训练",
+      "算法", "延迟", "服务", "资源",
+    ],
     sopFiles: ["sop-008.html"],
   },
   {
     intent: "frontend",
     keywords: ["前端", "白屏", "页面", "JS", "CORS", "渲染", "浏览器", "CDN资源", "静态资源", "首屏"],
+    scoringKeywords: [
+      "前端", "白屏", "JS", "CORS", "渲染", "CDN", "静态", "页面", "性能", "错误",
+    ],
     sopFiles: ["sop-003.html"],
   },
   {
     intent: "data_pipeline",
     keywords: ["数据平台", "ETL", "Flink", "HDFS", "Kafka", "数据质量", "数据延迟", "Spark", "管道"],
+    scoringKeywords: [
+      "ETL", "Flink", "HDFS", "Kafka", "数据", "Spark", "管道", "质量", "延迟",
+    ],
     sopFiles: ["sop-006.html"],
   },
   {
     intent: "mobile",
     keywords: ["移动", "App", "app", "iOS", "Android", "客户端", "崩溃", "推送", "审核", "商店", "手机"],
+    scoringKeywords: [
+      "App", "崩溃", "iOS", "Android", "移动", "推送", "审核", "网络", "商店",
+    ],
     sopFiles: ["sop-007.html"],
   },
   {
     intent: "qa",
     keywords: ["QA", "测试", "自动化", "性能测试", "测试环境", "Bug", "回归", "用例", "质量"],
+    scoringKeywords: [
+      "测试", "自动化", "性能", "回归", "用例", "Bug", "环境", "验证",
+    ],
     sopFiles: ["sop-009.html"],
   },
   {
     intent: "network_cdn",
     keywords: ["网络", "CDN", "DNS", "负载均衡", "带宽", "丢包", "延迟", "专线", "BGP", "交换机", "路由", "LB"],
+    scoringKeywords: [
+      "网络", "CDN", "DNS", "负载均衡", "带宽", "丢包", "延迟", "BGP", "交换机",
+      "路由", "DDoS", "节点", "流量",
+    ],
     sopFiles: ["sop-010.html"],
   },
 ];
 
 function classifyIntent(question: string): { intent: Intent; sopFiles: string[] } {
   const q = question.toLowerCase();
-
-  // Score each rule by keyword matches
   let best: { intent: Intent; sopFiles: string[]; score: number } = {
     intent: "generic",
     sopFiles: [],
@@ -94,115 +129,131 @@ function classifyIntent(question: string): { intent: Intent; sopFiles: string[] 
     }
   }
 
-  // If no match, fallback: try to match from sop-index keywords
-  if (best.score === 0) {
-    const indexContent = safeReadFile("sop-index.md").toLowerCase();
-    // Find which SOP section the question keywords appear in
-    const sopMatches: string[] = [];
-    for (let i = 1; i <= 10; i++) {
-      const sopId = `sop-${String(i).padStart(3, "0")}`;
-      const sectionStart = indexContent.indexOf(`## ${sopId}`);
-      if (sectionStart === -1) continue;
-      const nextSection = indexContent.indexOf("## sop-", sectionStart + 5);
-      const section = indexContent.slice(
-        sectionStart,
-        nextSection > 0 ? nextSection : undefined,
-      );
-      // Check if any question word appears in this section
-      const qWords = q.split(/\s+/).filter((w) => w.length > 0);
-      const matchCount = qWords.filter((w) => section.includes(w)).length;
-      if (matchCount > 0) {
-        sopMatches.push(`${sopId}.html`);
-      }
-    }
-    if (sopMatches.length > 0) {
-      return { intent: "generic", sopFiles: sopMatches };
-    }
-  }
-
   return best;
 }
 
+// ── Section extraction ───────────────────────────────────────────
+
 interface SopSection {
   heading: string;
-  level: number; // 2 for h2, 3 for h3
+  level: number;
   text: string;
 }
 
 function extractSections(html: string): SopSection[] {
-  // Parse SOP HTML and extract h2/h3 sections
   const doc = parseHtmlDocument("temp", "temp.html", html);
+  const text = doc.text;
   const sections: SopSection[] = [];
 
-  // Use regex on the parsed text to find heading-bounded sections
-  const text = doc.text;
+  // Headings: 一、... 到 六、... plus 场景X：
+  const headingRe =
+    /([一二三四五六七八九十]+)[、．.]([^\n]+)|(场景[一二三四五六七八九十]+[：:][^\n]+)/g;
 
-  // Split by headings
-  const headingRe = /(一[、．.].+?(?:流程|处理|指标|职责|操作|参考)|二[、．.].+?(?:流程|处理|指标|职责|操作|参考)|三[、．.].+?(?:流程|处理|指标|职责|操作|参考)|四[、．.].+?(?:流程|处理|指标|职责|操作|参考)|五[、．.].+?(?:流程|处理|指标|职责|操作|参考)|六[、．.].+?(?:流程|处理|指标|职责|操作|参考)|场景[一二三四五六七八九十][：:].+)/g;
+  const parts: { heading: string; content: string }[] = [];
+  let lastIdx = 0;
+  let match: RegExpExecArray | null;
 
-  const parts = text.split(headingRe);
+  while ((match = headingRe.exec(text)) !== null) {
+    const heading = match[0];
+    const start = match.index;
 
-  // First part before any heading (if text starts with content)
-  let i = 0;
-  while (i < parts.length) {
-    const part = parts[i].trim();
-    if (!part) {
-      i++;
-      continue;
+    // Text before this heading belongs to previous section or preamble
+    if (parts.length === 0 && start > 0) {
+      const preamble = text.slice(0, start).trim();
+      if (preamble.length > 20) {
+        parts.push({ heading: "概述", content: preamble });
+      }
+    } else if (parts.length > 0) {
+      // Close previous section's content up to this heading
+      parts[parts.length - 1].content = text
+        .slice(lastIdx, start)
+        .trim();
     }
 
-    // Check if this is a heading
-    const headingMatch = part.match(headingRe);
-    if (headingMatch) {
-      // This is a heading — the next part is the content
-      const heading = headingMatch[0];
-      const content = i + 1 < parts.length ? parts[i + 1].trim() : "";
+    parts.push({ heading, content: "" });
+    lastIdx = match.index + heading.length;
+  }
 
-      let level: number;
-      if (/^[一二三四五六]/.test(heading)) {
-        level = 2;
-      } else if (/^场景/.test(heading)) {
-        level = 3;
-      } else {
-        level = 2;
-      }
+  // Last section content
+  if (parts.length > 0 && lastIdx < text.length) {
+    parts[parts.length - 1].content = text.slice(lastIdx).trim();
+  }
 
-      sections.push({ heading, level, text: content });
-      i += 2;
-    } else {
-      // Text without heading — treat as content
-      if (sections.length === 0) {
-        sections.push({ heading: "概述", level: 2, text: part });
+  // Fallback: if regex didn't match, just split on heading patterns
+  if (parts.length === 0) {
+    const altHeadings = /(值班职责|监控指标|常见故障|升级流程|禁止操作|工具与命令)/g;
+    const altParts = text.split(altHeadings);
+    for (let i = 0; i < altParts.length; i++) {
+      if (altParts[i].match(altHeadings)) {
+        const heading = altParts[i];
+        const content = i + 1 < altParts.length ? altParts[i + 1].trim() : "";
+        parts.push({ heading, content });
+        i++; // skip content
       }
-      i++;
     }
+  }
+
+  for (const p of parts) {
+    let level = 2;
+    if (/^场景/.test(p.heading)) level = 3;
+    if (/^概述/.test(p.heading)) level = 2;
+    sections.push({ heading: p.heading, level, text: p.content });
   }
 
   return sections;
 }
 
+// ── Section scoring with intent-specific keywords ────────────────
+
+function getScoringKeywords(
+  intent: Intent,
+  question: string,
+): string[] {
+  // Start with intent-specific scoring keywords
+  const rule = intentRules.find((r) => r.intent === intent);
+  const kwSet = new Set(rule?.scoringKeywords || []);
+
+  // Also extract any CJK bigrams from the question as fallback
+  const q = question.toLowerCase();
+  for (let i = 0; i < q.length - 1; i++) {
+    const pair = q.slice(i, i + 2);
+    if (/^[一-鿿]{2}$/.test(pair)) {
+      kwSet.add(pair);
+    }
+  }
+  // Add English words
+  for (const w of q.split(/\s+/)) {
+    if (w.length > 0) kwSet.add(w);
+  }
+
+  return Array.from(kwSet);
+}
+
 function scoreSections(
   sections: SopSection[],
   question: string,
+  intent: Intent,
 ): SopSection[] {
-  const q = question.toLowerCase();
+  const keywords = getScoringKeywords(intent, question);
+
   const scored = sections.map((s) => {
     const text = s.text.toLowerCase();
     const heading = s.heading.toLowerCase();
     let score = 0;
 
-    // Count keyword matches in text
-    for (const word of q.split(/\s+/).filter((w) => w.length > 0)) {
-      let idx = 0;
-      while ((idx = text.indexOf(word, idx)) !== -1) {
-        score += 1;
-        idx += 1;
-      }
-    }
+    for (const kw of keywords) {
+      const kwLower = kw.toLowerCase();
+      if (kwLower.length < 2) continue; // skip single chars
 
-    // Heading match bonus
-    for (const word of q.split(/\s+/).filter((w) => w.length > 0)) {
-      if (heading.includes(word)) {
+      // Count matches in text
+      let idx = 0;
+      while ((idx = text.indexOf(kwLower, idx)) !== -1) {
+        score += 1;
+        idx += kwLower.length;
+      }
+
+      // Heading match bonus
+      if (heading.includes(kwLower)) {
         score += s.level === 3 ? 3 : 2;
       }
     }
@@ -214,6 +265,8 @@ function scoreSections(
   return scored.filter((s) => s.score > 0).map((s) => s.section);
 }
 
+// ── Answer building ──────────────────────────────────────────────
+
 function buildAnswer(
   question: string,
   intent: Intent,
@@ -224,14 +277,12 @@ function buildAnswer(
     return `根据现有 SOP 文档，未找到与「${question}」直接相关的内容。建议联系对应团队值班人员获取帮助。`;
   }
 
-  // Collect relevant info from sections
   const upgradeSteps: string[] = [];
   const processSteps: string[] = [];
   const forbiddenItems: string[] = [];
-  const notes: string[] = [];
 
   for (const { sopId, section } of allSections) {
-    const text = section.text.slice(0, 500); // Limit per section
+    const text = section.text.slice(0, 500);
     if (/升级|P0|紧急/.test(section.heading)) {
       upgradeSteps.push(`[${sopId}] ${section.heading}: ${text.slice(0, 200)}`);
     }
@@ -244,7 +295,7 @@ function buildAnswer(
     }
   }
 
-  const sourceList = sources.map((s) => `sop-${s.replace(/\.html$/, "")}.html`).join("、");
+  const sourceList = sources.join("、");
 
   const intentLabel: Record<string, string> = {
     database_replication: "数据库主从复制/延迟问题",
@@ -334,7 +385,7 @@ export async function runAgent(question: string): Promise<AgentResponse> {
     try {
       const html = safeReadFile(fname);
       const sections = extractSections(html);
-      const relevant = scoreSections(sections, question);
+      const relevant = scoreSections(sections, question, intent);
 
       const summary =
         relevant.length > 0
