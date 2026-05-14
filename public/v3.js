@@ -20,7 +20,7 @@
       <div class="tool-call">
         <div class="tool-step">
           <span class="tool-step-num">${i + 1}</span>
-          <span class="tool-name">readFile</span>
+          <span class="tool-name">${esc(tc.tool)}</span>
         </div>
         <div class="tool-args">fname: ${esc(tc.args.fname)}</div>
         <div class="tool-obs">${esc(tc.observation)}</div>
@@ -30,7 +30,7 @@
 
     return `
       <div class="tool-calls-section">
-        <div class="tool-calls-header" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden">
+        <div class="tool-calls-header">
           🔧 工具调用过程 (${calls.length} 步)
         </div>
         <div class="tool-calls-body">${steps}</div>
@@ -98,5 +98,13 @@
   btn.addEventListener("click", send);
   q.addEventListener("keydown", function (e) {
     if (e.key === "Enter") send();
+  });
+
+  // Delegate tool-calls toggle to chat history
+  historyEl.addEventListener("click", function (e) {
+    const header = e.target.closest(".tool-calls-header");
+    if (!header) return;
+    const body = header.nextElementSibling;
+    if (body) body.hidden = !body.hidden;
   });
 })();
