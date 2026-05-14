@@ -38,9 +38,9 @@ function computeScore(query: string, doc: DocumentRecord): number {
     idx += qLower.length || 1;
   }
 
-  // Title match bonus: 2x weight
+  // Title match bonus: +2 so title-only hits still produce results
   if (titleLower.includes(qLower)) {
-    score *= 2;
+    score += 2;
   }
 
   return score;
@@ -60,6 +60,7 @@ function makeSnippet(query: string, text: string, maxLen = 150): string {
     start = Math.max(0, idx - half);
     end = Math.min(text.length, idx + qLower.length + half);
   } else {
+    // Query not in text — show beginning of text
     start = 0;
     end = Math.min(text.length, maxLen);
   }

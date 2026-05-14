@@ -126,15 +126,22 @@ describe("v1 search", () => {
     expect(data.results).toHaveLength(0);
   });
 
-  it("POST /v1/documents creates a document", async () => {
+  it("POST /v1/documents creates and makes doc searchable", async () => {
+    const uniqueWord = "flurbozax_test_" + Date.now();
     const { status, body } = await appRequest("POST", "/v1/documents", {
-      id: "test-sop",
-      html: "<html><head><title>Test SOP</title></head><body><p>OOM test content</p></body></html>",
+      id: "test-sop-upload",
+      html: `<html><head><title>Test SOP</title></head><body><p>${uniqueWord} in body text</p></body></html>`,
     });
     expect(status).toBe(201);
     const data = body as { id: string; title: string };
-    expect(data.id).toBe("test-sop");
+    expect(data.id).toBe("test-sop-upload");
     expect(data.title).toContain("Test");
+
+    // Verify the document is now searchable
+    const search = await appRequest("GET", `/v1/search?q=${uniqueWord}`);
+    const sdata = search.body as { results: { id: string }[] };
+    const ids = sdata.results.map((r) => r.id);
+    expect(ids).toContain("test-sop-upload");
   });
 
   it("POST /v1/documents rejects missing fields", async () => {
