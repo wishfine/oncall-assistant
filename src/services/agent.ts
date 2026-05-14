@@ -1,6 +1,19 @@
 import type { AgentResponse, ToolCall } from "../types";
 import { safeReadFile } from "./safeReadFile";
 import { parseHtmlDocument } from "./htmlParser";
+import { ensureSopIndex } from "./sopIndexGenerator";
+
+// ── Tool Runtime ───────────────────────────────────────────────
+
+type ToolName = "readFile";
+
+const toolImplementations: Record<ToolName, (args: { fname: string }) => string> = {
+  readFile: (args) => safeReadFile(args.fname),
+};
+
+function callTool(tool: ToolName, args: { fname: string }): string {
+  return toolImplementations[tool](args);
+}
 
 type Intent =
   | "database_replication"
@@ -48,7 +61,7 @@ const intentRules: IntentRule[] = [
       "P0", "升级", "故障", "紧急", "响应", "恢复", "值班", "通知", "团队",
       "五分钟", "三分钟", "总监", "VP",
     ],
-    sopFiles: ["sop-001.html", "sop-002.html", "sop-004.html", "sop-005.html", "sop-010.html"],
+    sopFiles: ["sop-001.html", "sop-002.html", "sop-004.html", "sop-005.html"],
   },
   {
     intent: "security_intrusion",
@@ -462,22 +475,52 @@ function buildAnswer(
 
 // ── Main Agent Entry Point ──────────────────────────────────────
 
-export async function runAgent(question: string): Promise<AgentResponse> {
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export async function runAgent(
+  question: string,
+  history?: ChatMessage[],
+): Promise<AgentResponse> {
   const toolCalls: ToolCall[] = [];
 
-  // Step 1: Read sop-index.md
+  // If history provided, prepend recent context to the question
+  let contextualQuestion = question;
+  if (history && history.length > 0) {
+    const recentUser = history
+      .filter((m) => m.role === "user")
+      .slice(-3)
+      .map((m) => m.content)
+      .join("；");
+    if (recentUser && !recentUser.includes(question)) {
+      contextualQuestion = `${recentUser}；${question}`;
+    }
+  }
+
+  // Ensure sop-index.md is fresh
+  try {
+    ensureSopIndex();
+  } catch {
+    // Non-fatal: proceed with existing index
+  }
+
+  // Step 1: Read sop-index.md via the readFile tool
   let indexContent: string;
   try {
-    indexContent = safeReadFile("sop-index.md");
+    indexContent = callTool("readFile", { fname: "sop-index.md" });
     toolCalls.push({
       tool: "readFile",
       args: { fname: "sop-index.md" },
+      reason: "需要先读取 SOP 索引以定位相关文档",
       observation: `读取成功，${indexContent.length} 字符`,
     });
   } catch (e) {
     toolCalls.push({
       tool: "readFile",
       args: { fname: "sop-index.md" },
+      reason: "需要先读取 SOP 索引以定位相关文档",
       observation: `读取失败: ${(e as Error).message}`,
     });
     return {
@@ -488,17 +531,17 @@ export async function runAgent(question: string): Promise<AgentResponse> {
   }
 
   // Step 2: Classify intent and select SOP files via sop-index.md
-  const { intent, sopFiles } = classifyIntent(question, indexContent);
+  const { intent, sopFiles } = classifyIntent(contextualQuestion, indexContent);
 
-  // Step 3: Read selected SOP files
+  // Step 3: Read selected SOP files via the readFile tool
   const allSections: { sopId: string; section: SopSection }[] = [];
   const sources: string[] = [];
 
   for (const fname of sopFiles) {
     try {
-      const html = safeReadFile(fname);
+      const html = callTool("readFile", { fname });
       const sections = extractSections(html);
-      const relevant = scoreSections(sections, question, intent);
+      const relevant = scoreSections(sections, contextualQuestion, intent);
 
       const summary =
         relevant.length > 0
@@ -508,6 +551,7 @@ export async function runAgent(question: string): Promise<AgentResponse> {
       toolCalls.push({
         tool: "readFile",
         args: { fname },
+        reason: `用户问题与索引中 ${fname} 的关键词匹配，需要读取该 SOP 获取详细处理流程`,
         observation: `${summary}（文件长度 ${html.length} 字符）`,
       });
 
@@ -519,13 +563,14 @@ export async function runAgent(question: string): Promise<AgentResponse> {
       toolCalls.push({
         tool: "readFile",
         args: { fname },
+        reason: `索引匹配到 ${fname}，尝试读取`,
         observation: `读取失败: ${(e as Error).message}`,
       });
     }
   }
 
   // Step 4: Build answer
-  const answer = buildAnswer(question, intent, allSections, sources);
+  const answer = buildAnswer(contextualQuestion, intent, allSections, sources);
 
   return { answer, toolCalls, sources };
 }

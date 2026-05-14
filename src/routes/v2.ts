@@ -16,6 +16,11 @@ router.get("/", (_req: Request, res: Response) => {
 </head>
 <body>
 <div class="container">
+  <nav class="phase-nav">
+    <a href="/v1">Phase 1 · 关键词搜索</a>
+    <a href="/v2" class="active">Phase 2 · 语义搜索</a>
+    <a href="/v3">Phase 3 · Agent 助手</a>
+  </nav>
   <div class="header">
     <h1>Phase 2 · 语义搜索</h1>
     <p>输入自然语言查询，无需精确匹配关键词即可找到相关 SOP</p>

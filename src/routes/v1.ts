@@ -17,6 +17,11 @@ router.get("/", (_req: Request, res: Response) => {
 </head>
 <body>
 <div class="container">
+  <nav class="phase-nav">
+    <a href="/v1" class="active">Phase 1 · 关键词搜索</a>
+    <a href="/v2">Phase 2 · 语义搜索</a>
+    <a href="/v3">Phase 3 · Agent 助手</a>
+  </nav>
   <div class="header">
     <h1>Phase 1 · 关键词搜索</h1>
     <p>输入关键词在 SOP 文档中检索，支持中英文混合查询</p>
@@ -38,7 +43,7 @@ router.get("/", (_req: Request, res: Response) => {
 router.post("/documents", (req: Request, res: Response) => {
   const { id, html } = req.body;
   if (!id || !html) {
-    res.status(400).json({ error: "id and html are required" });
+    res.status(400).json({ error: { code: "BAD_REQUEST", message: "id and html are required" } });
     return;
   }
   const doc = upsertDocument(id, html);

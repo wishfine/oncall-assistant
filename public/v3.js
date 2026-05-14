@@ -1,12 +1,15 @@
 (function () {
-  const q = document.getElementById("query");
-  const btn = document.getElementById("send-btn");
-  const statusEl = document.getElementById("status");
-  const historyEl = document.getElementById("chat-history");
+  var q = document.getElementById("query");
+  var btn = document.getElementById("send-btn");
+  var statusEl = document.getElementById("status");
+  var historyEl = document.getElementById("chat-history");
+
+  // Track conversation for multi-turn context
+  var chatHistory = [];
 
   function esc(s) {
     if (s === null || s === undefined) return "";
-    const el = document.createElement("span");
+    var el = document.createElement("span");
     el.textContent = String(s);
     return el.innerHTML;
   }
@@ -14,51 +17,71 @@
   function renderToolCalls(calls) {
     if (!calls || !calls.length) return "";
 
-    const steps = calls
-      .map(
-        (tc, i) => `
-      <div class="tool-call">
-        <div class="tool-step">
-          <span class="tool-step-num">${i + 1}</span>
-          <span class="tool-name">${esc(tc.tool)}</span>
-        </div>
-        <div class="tool-args">fname: ${esc(tc.args.fname)}</div>
-        <div class="tool-obs">${esc(tc.observation)}</div>
-      </div>`,
-      )
-      .join("");
+    var steps = calls.map(function (tc, i) {
+      var reasonHtml = tc.reason
+        ? '<div class="tool-reason">Reason: ' + esc(tc.reason) + "</div>"
+        : "";
+      return (
+        '<div class="tool-call">' +
+        '<div class="tool-step">' +
+        '<span class="tool-step-num">' +
+        (i + 1) +
+        "</span>" +
+        '<span class="tool-name">' +
+        esc(tc.tool) +
+        "</span>" +
+        "</div>" +
+        '<div class="tool-args">fname: ' +
+        esc(tc.args.fname) +
+        "</div>" +
+        reasonHtml +
+        '<div class="tool-obs">' +
+        esc(tc.observation) +
+        "</div>" +
+        "</div>"
+      );
+    }).join("");
 
-    return `
-      <div class="tool-calls-section">
-        <div class="tool-calls-header">
-          🔧 工具调用过程 (${calls.length} 步)
-        </div>
-        <div class="tool-calls-body">${steps}</div>
-      </div>`;
+    return (
+      '<div class="tool-calls-section">' +
+      '<div class="tool-calls-header">' +
+      "🔧 工具调用过程 (" +
+      calls.length +
+      " 步)" +
+      "</div>" +
+      '<div class="tool-calls-body">' +
+      steps +
+      "</div>" +
+      "</div>"
+    );
   }
 
   function renderSources(sources) {
     if (!sources || !sources.length) return "";
-    return `
-      <div class="sources">
-        📄 来源：
-        ${sources.map((s) => `<span class="source-tag">${esc(s)}</span>`).join(" ")}
-      </div>`;
+    return (
+      '<div class="sources">📄 来源：' +
+      sources
+        .map(function (s) {
+          return '<span class="source-tag">' + esc(s) + "</span>";
+        })
+        .join(" ") +
+      "</div>"
+    );
   }
 
   function addMessage(role, content, toolCalls, sources) {
-    const div = document.createElement("div");
+    var div = document.createElement("div");
     div.className = "chat-msg " + role;
 
-    const roleLabel = role === "user" ? "🧑 你" : "🤖 Agent";
+    var roleLabel = role === "user" ? "🧑 你" : "🤖 Agent";
 
-    let html = `<div class="msg-role">${roleLabel}</div>`;
+    var html = '<div class="msg-role">' + roleLabel + "</div>";
 
     if (toolCalls && toolCalls.length) {
       html += renderToolCalls(toolCalls);
     }
 
-    html += `<div class="msg-content">${esc(content)}</div>`;
+    html += '<div class="msg-content">' + esc(content) + "</div>";
     html += renderSources(sources);
 
     div.innerHTML = html;
@@ -67,24 +90,31 @@
   }
 
   async function send() {
-    const message = q.value.trim();
+    var message = q.value.trim();
     if (!message) return;
 
     addMessage("user", message, null, null);
+    chatHistory.push({ role: "user", content: message });
     q.value = "";
     q.disabled = true;
     btn.disabled = true;
     statusEl.innerHTML = '<div class="loading">Agent 思考中…</div>';
 
     try {
-      const resp = await fetch("/v3/chat", {
+      var body = { message: message };
+      if (chatHistory.length > 1) {
+        body.history = chatHistory.slice(0, -1); // exclude current message
+      }
+
+      var resp = await fetch("/v3/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(body),
       });
-      const data = await resp.json();
+      var data = await resp.json();
       statusEl.innerHTML = "";
       addMessage("agent", data.answer, data.toolCalls, data.sources);
+      chatHistory.push({ role: "assistant", content: data.answer });
     } catch (e) {
       statusEl.innerHTML =
         '<div class="error-msg">请求失败，请检查服务状态</div>';
@@ -102,9 +132,9 @@
 
   // Delegate tool-calls toggle to chat history
   historyEl.addEventListener("click", function (e) {
-    const header = e.target.closest(".tool-calls-header");
+    var header = e.target.closest(".tool-calls-header");
     if (!header) return;
-    const body = header.nextElementSibling;
+    var body = header.nextElementSibling;
     if (body) body.hidden = !body.hidden;
   });
 })();

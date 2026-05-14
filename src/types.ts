@@ -14,8 +14,9 @@ export interface SearchResult {
 }
 
 export interface ToolCall {
-  tool: string;
-  args: Record<string, string>;
+  tool: "readFile";
+  args: { fname: string };
+  reason: string;
   observation: string;
 }
 
