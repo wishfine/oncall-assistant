@@ -198,6 +198,7 @@ Agent 只使用一个工具：`readFile(fname: string) -> string`。
 
 ### Phase 3：Agent
 
+- `sop-index.md` 由系统启动时自动生成/刷新（`ensureSopIndex()`），解析所有 SOP 文档的标题、关键词和摘要，支持任意数量 SOP（不限于 10 份）
 - Agent 第一步读取 `sop-index.md`，从中解析每个 SOP 的关键词
 - 将用户问题与索引关键词做子串匹配，按命中数排序选出 SOP 文件
 - 固定意图规则作为补充加权，增强常见问题的准确性

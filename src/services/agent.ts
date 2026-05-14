@@ -127,8 +127,9 @@ const intentRules: IntentRule[] = [
 /**
  * Parse sop-index.md into a map of SOP filename → keywords from that section.
  * Supports any number of SOP entries via regex scan.
+ * Exported for testing arbitrary SOP count parsing.
  */
-function parseIndexKeywords(indexContent: string): Map<string, string[]> {
+export function parseIndexKeywords(indexContent: string): Map<string, string[]> {
   const map = new Map<string, string[]>();
 
   // Match all ## sop-NNN or ## sop-NNN.html headings
