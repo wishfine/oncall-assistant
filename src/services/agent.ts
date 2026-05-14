@@ -211,7 +211,7 @@ function extractSections(html: string): SopSection[] {
 
   // Headings: 一、... 到 六、... plus 场景X：
   const headingRe =
-    /([一二三四五六七八九十]+)[、．.]([^\n]+)|(场景[一二三四五六七八九十]+[：:][^\n]+)/g;
+    /(一[、．.]值班职责|二[、．.]监控指标|三[、．.]常见故障处理|四[、．.]升级流程|五[、．.]禁止操作|六[、．.]工具[^\n]*|场景[一二三四五六七八九十]+[：:][^\n]+)/g;
 
   const parts: { heading: string; content: string }[] = [];
   let lastIdx = 0;
@@ -260,7 +260,6 @@ function extractSections(html: string): SopSection[] {
   for (const p of parts) {
     let level = 2;
     if (/^场景/.test(p.heading)) level = 3;
-    if (/^概述/.test(p.heading)) level = 2;
     sections.push({ heading: p.heading, level, text: p.content });
   }
 

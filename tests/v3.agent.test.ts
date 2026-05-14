@@ -114,6 +114,17 @@ describe("agent", () => {
     expect(hasModelTerms).toBe(true);
   });
 
+  it("generic intent fallback matches sop-index keywords", async () => {
+    // A question that doesn't match any fixed intent but has keywords in sop-index
+    const result = await runAgent("zookeeper集群故障怎么排查？");
+    // "zookeeper" alone won't match any intent, but "集群" and "故障" appear
+    // in sop-index sections (SRE/sop-004 and others)
+    expect(result.toolCalls.length).toBeGreaterThan(0);
+    expect(result.toolCalls[0].args.fname).toBe("sop-index.md");
+    // Should at least have found some SOPs via sop-index keyword matching
+    expect(result.sources.length).toBeGreaterThan(0);
+  });
+
   it("toolCalls always start with readFile(sop-index.md)", async () => {
     const result = await runAgent("OOM");
     expect(result.toolCalls.length).toBeGreaterThan(0);
