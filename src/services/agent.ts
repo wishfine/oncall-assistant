@@ -61,7 +61,7 @@ const intentRules: IntentRule[] = [
       "P0", "升级", "故障", "紧急", "响应", "恢复", "值班", "通知", "团队",
       "五分钟", "三分钟", "总监", "VP",
     ],
-    sopFiles: ["sop-001.html", "sop-002.html", "sop-004.html", "sop-005.html"],
+    sopFiles: ["sop-001.html", "sop-002.html", "sop-004.html", "sop-005.html", "sop-010.html"],
   },
   {
     intent: "security_intrusion",
@@ -168,9 +168,47 @@ function classifyIntent(
   indexContent: string,
 ): { intent: Intent; sopFiles: string[] } {
   const q = question.toLowerCase();
-  const indexLower = indexContent.toLowerCase();
 
-  // ── Primary: score each SOP via its index keywords ──────────
+  // ── Stage 1: deterministic intent routing ─────────────────────
+  // Match against known intent rules. Strong match → direct routing.
+  let bestRule: { intent: Intent; sopFiles: string[]; score: number } = {
+    intent: "generic",
+    sopFiles: [],
+    score: 0,
+  };
+
+  for (const rule of intentRules) {
+    let ruleScore = 0;
+    for (const kw of rule.keywords) {
+      if (q.includes(kw.toLowerCase())) ruleScore++;
+    }
+    if (ruleScore > bestRule.score) {
+      bestRule = { intent: rule.intent, sopFiles: rule.sopFiles, score: ruleScore };
+    }
+  }
+
+  // Strong intent match: route directly to the known SOPs
+  if (bestRule.score > 0 && bestRule.sopFiles.length > 0) {
+    return { intent: bestRule.intent, sopFiles: bestRule.sopFiles };
+  }
+
+  // ── Stage 2: sop-index fallback for unknown/generic questions ─
+  // Extract search terms from the question
+  const searchTerms = new Set<string>();
+  for (let i = 0; i < q.length - 1; i++) {
+    const pair = q.slice(i, i + 2);
+    if (/^[一-鿿]{2}$/.test(pair)) searchTerms.add(pair);
+  }
+  for (const w of q.split(/\s+/)) {
+    const cleaned = w.replace(/[^a-z0-9]/g, "");
+    if (cleaned.length > 0) searchTerms.add(cleaned);
+  }
+
+  if (searchTerms.size === 0) {
+    return { intent: "generic", sopFiles: ["sop-001.html"] };
+  }
+
+  // Parse index keywords and score each SOP
   const indexKeywords = parseIndexKeywords(indexContent);
   const sopScores: { fname: string; score: number }[] = [];
 
@@ -184,18 +222,8 @@ function classifyIntent(
     }
   }
 
-  // ── Supplement: search CJK bigrams in index sections ────────
-  const searchTerms = new Set<string>();
-  for (let i = 0; i < q.length - 1; i++) {
-    const pair = q.slice(i, i + 2);
-    if (/^[一-鿿]{2}$/.test(pair)) searchTerms.add(pair);
-  }
-  for (const w of q.split(/\s+/)) {
-    const cleaned = w.replace(/[^a-z0-9]/g, "");
-    if (cleaned.length > 0) searchTerms.add(cleaned);
-  }
-
-  // Extract all SOP sections from the index using the same heading regex
+  // Also search CJK bigrams in index sections
+  const indexLower = indexContent.toLowerCase();
   const headingRe = /^##\s+(sop-\d+)(?:\.html)?/gm;
   const sectionMatches = Array.from(indexLower.matchAll(headingRe));
 
@@ -224,46 +252,14 @@ function classifyIntent(
     }
   }
 
-  // ── Bonus: intent-rule weighting ────────────────────────────
-  let bestRule: { intent: Intent; score: number } = {
-    intent: "generic",
-    score: 0,
-  };
-
-  for (const rule of intentRules) {
-    let ruleScore = 0;
-    for (const kw of rule.keywords) {
-      if (q.includes(kw.toLowerCase())) ruleScore++;
-    }
-    if (ruleScore > bestRule.score) {
-      bestRule = { intent: rule.intent, score: ruleScore };
-    }
-
-    // Add bonus to index-based SOP scores
-    if (ruleScore > 0) {
-      for (const fname of rule.sopFiles) {
-        const existing = sopScores.find((s) => s.fname === fname);
-        if (existing) {
-          existing.score += ruleScore;
-        } else {
-          sopScores.push({ fname, score: ruleScore });
-        }
-      }
-    }
-  }
-
   sopScores.sort((a, b) => b.score - a.score);
+  const sopFiles = sopScores.slice(0, 3).map((s) => s.fname);
 
-  // Select top SOPs (P0 uses more)
-  const maxFiles = bestRule.intent === "p0_escalation" ? 5 : 3;
-  const sopFiles = sopScores.slice(0, maxFiles).map((s) => s.fname);
-
-  // Fallback: if nothing matched, return at least sop-001
   if (sopFiles.length === 0) {
     return { intent: "generic", sopFiles: ["sop-001.html"] };
   }
 
-  return { intent: bestRule.intent, sopFiles };
+  return { intent: "generic", sopFiles };
 }
 
 // ── Section extraction ───────────────────────────────────────────
