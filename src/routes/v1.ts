@@ -70,7 +70,11 @@ router.get("/search", (req: Request, res: Response) => {
   if (!query && req.originalUrl.includes("q=&")) {
     query = "&";
   }
-  // q=%26 is parsed as "&" by Express automatically
+  // q=%26 is parsed as "&" by Express automatically. If the UI sends a
+  // literal "%26" input it arrives as q=%2526, which Express decodes to "%26".
+  if (query === "%26") {
+    query = "&";
+  }
 
   if (!query) {
     res.json({ query: "", results: [] });

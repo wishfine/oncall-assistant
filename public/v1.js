@@ -12,6 +12,7 @@
 
   function render(results, query) {
     if (!results.length) {
+      statusEl.innerHTML = "";
       resultsEl.innerHTML = `<div class="empty-state">未找到与 “${esc(query)}” 相关的结果</div>`;
       return;
     }
@@ -33,7 +34,11 @@
 
   async function search() {
     const query = q.value.trim();
-    if (!query) return;
+    if (!query) {
+      statusEl.innerHTML = "";
+      resultsEl.innerHTML = '<div class="empty-state">请输入关键词后再搜索</div>';
+      return;
+    }
 
     statusEl.innerHTML = '<div class="loading">搜索中…</div>';
     resultsEl.innerHTML = "";

@@ -43,6 +43,13 @@ describe("v1 search", () => {
     expect(data.results.length).toBeGreaterThan(0);
   });
 
+  it("searches & when the literal %26 is encoded by the UI", async () => {
+    const { body } = await appRequest("GET", "/v1/search?q=%2526");
+    const data = body as { query: string; results: unknown[] };
+    expect(data.query).toBe("&");
+    expect(data.results.length).toBeGreaterThan(0);
+  });
+
   it("handles q=& as query for &", async () => {
     const { body } = await appRequest("GET", "/v1/search?q=&");
     const data = body as { results: unknown[] };
