@@ -1,5 +1,10 @@
 # AI 交互提示词截图
 
+## 我就不截图了，整个项目所有的与AI交互的prompt都对应导出到session了
+
+项目地址：https://github.com/wishfine/oncall-assistant
+
+---
 一共4个对话 session，
 其中 
 session_init.md 是为了让GPT5.5生成让Codex写整个项目设计文档
