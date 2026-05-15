@@ -485,22 +485,14 @@ export interface ChatMessage {
 
 export async function runAgent(
   question: string,
-  history?: ChatMessage[],
+  _history?: ChatMessage[],
 ): Promise<AgentResponse> {
   const toolCalls: ToolCall[] = [];
 
-  // If history provided, prepend recent context to the question
-  let contextualQuestion = question;
-  if (history && history.length > 0) {
-    const recentUser = history
-      .filter((m) => m.role === "user")
-      .slice(-3)
-      .map((m) => m.content)
-      .join("；");
-    if (recentUser && !recentUser.includes(question)) {
-      contextualQuestion = `${recentUser}；${question}`;
-    }
-  }
+  // Use the question as-is. History is accepted for API compatibility
+  // but not used for routing — each question is treated independently
+  // to prevent cross-contamination between unrelated On-Call topics.
+  const contextualQuestion = question;
 
   // Ensure sop-index.md is fresh
   try {
